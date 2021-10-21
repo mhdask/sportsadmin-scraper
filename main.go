@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -25,27 +26,23 @@ type MatchRow struct {
 	HomeTeam Team
 	AwayTeam Team
 	Result   string
-	Winner   Team
 }
 
 type Team struct {
-	Name string
-	Logo string
+	Name   string
+	Logo   string
+	Winner bool
 }
 
 func main() {
 	schedule := getFullSchedule()
-	// fmt.Println(len(schedule))
 	rounds := weekSplitter(schedule)
-	_ = rounds
-	var counter int
 	for _, v := range rounds {
-		for _, v2 := range v.Matches {
-			fmt.Println(v2.Date)
-			counter += 1
-		}
+		v.checkWinner()
 	}
-	fmt.Println(counter)
+
+	fmt.Println(rounds[1].Matches)
+
 }
 
 func getFullSchedule() []MatchRow {
@@ -86,8 +83,8 @@ func getFullSchedule() []MatchRow {
 			continue
 		}
 
-		hometeam := Team{rows[i][3], ""}
-		awayteam := Team{rows[i][4], ""}
+		hometeam := Team{rows[i][3], "", false}
+		awayteam := Team{rows[i][4], "", false}
 		result := rows[i][5]
 		match := MatchRow{
 			Date:     date,
@@ -103,15 +100,31 @@ func getFullSchedule() []MatchRow {
 	return matches
 }
 
-func checkWinner(hometeam, awayteam Team, result string) Team {
-	values := strings.Split(result, "-")
-	fmt.Println(values)
-	if values[0] > values[1] {
-		return hometeam
-	} else if values[1] > values[0] {
-		return awayteam
-	} else {
-		return Team{}
+func (w *Week) checkWinner() {
+	for i, r := range w.Matches {
+
+		if r.Result == "" {
+			return
+		}
+
+		resultvalues := strings.Split(r.Result, " - ")
+		homescore, err := strconv.Atoi(resultvalues[0])
+		if err != nil {
+			log.Error().Err(err).Msg("could not convert hometeam score to integer")
+		}
+
+		awayscore, err := strconv.Atoi(resultvalues[1])
+		if err != nil {
+			log.Error().Err(err).Msg("could not convert awayteam score to integers")
+		}
+
+		if homescore > awayscore {
+			w.Matches[i].HomeTeam.Winner = true
+
+		} else if homescore < awayscore {
+			w.Matches[i].AwayTeam.Winner = true
+
+		}
 	}
 }
 
@@ -123,9 +136,7 @@ func weekSplitter(matches []MatchRow) []Week {
 
 	var round = 0
 	for _, v := range matches {
-		fmt.Println(starttime, endtime, v.Date)
 		if v.Date.After(starttime) && v.Date.Before(endtime) || v.Date.Day() == endtime.Day() || v.Date.Day() == starttime.Day() {
-			fmt.Println(v.HomeTeam, v.AwayTeam, "between")
 			roundmatches = append(roundmatches, v)
 		} else {
 			weeks = append(weeks, Week{round, roundmatches})
@@ -134,7 +145,6 @@ func weekSplitter(matches []MatchRow) []Week {
 			round += 1
 			starttime = starttime.Add(7 * 24 * time.Hour)
 			endtime = endtime.Add(7 * 24 * time.Hour)
-			fmt.Println("New timerange: ", starttime, endtime)
 		}
 	}
 
